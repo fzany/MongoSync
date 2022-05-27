@@ -1,20 +1,22 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using MongoDB.Bson;
+using MongoDB.Bson.Serialization;
+using MongoDB.Driver;
 using MongoSync.Models;
 using MongoSync.Services;
 using Newtonsoft.Json;
-using MongoDB.Driver;
-using MongoDB.Bson;
-using MongoDB.Labs.Search;
 
 namespace MongoSync.Controllers
 {
+
     [ApiController]
     [Route("[controller]")]
+    [Produces("application/json")]
     public class SyncController : ControllerBase
     {
         private readonly MongoService _mongo;
@@ -55,16 +57,35 @@ namespace MongoSync.Controllers
             }
         }
 
-        [HttpGet("RunSimulation/{query},{times}")]
-        public async Task<ActionResult<List<User>>> RunSimulation(string query, int times)
+        [HttpGet("RunSimulation")]
+        public async Task<ActionResult<List<User>>> RunSimulation([FromQuery] string query)
         {
             try
             {
-                BsonDocument pipeline = new BsonDocument {
-  new BsonDocument("$search", new BsonDocument {
+                var result = await _mongo._users.Find(d => d.FirstName.Contains(query) || d.LastName.Contains(query)).ToListAsync();
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Perform Search
+        /// </summary>
+        /// <param name="query"></param>
+        /// <returns></returns>
+        [HttpGet("RunSearch")]
+        public async Task<ActionResult> RunSearch([FromQuery] string query)
+        {
+            try
+            {
+                PipelineDefinition<User, BsonDocument> pipeline = new[] {
+                   new BsonDocument("$search", new BsonDocument {
     {
       "index",
-      "default"
+      "NameSearch"
     },
     {
       "text",
@@ -79,10 +100,19 @@ namespace MongoSync.Controllers
         }
       }
     }
-  }) };
+  })
+                };
 
-              var result = await _mongo._usersBson.AggregateAsync(pipeline);
+                var result = await _mongo._users.AggregateAsync(pipeline);
+                var resultList = await result.ToListAsync();
 
+                //List<User> outPutUsers = new List<User>();
+
+                //foreach (var userBson in resultList)
+                //{
+                //   // Debug.WriteLine(userBson);
+                //    outPutUsers.Add(BsonSerializer.Deserialize<User>(userBson));
+                //}
                 return Ok();
             }
             catch (Exception ex)
@@ -91,8 +121,6 @@ namespace MongoSync.Controllers
             }
         }
 
-        /*v
-}*/
 
         [HttpGet("Upload")]
         public async Task<ActionResult> Upload()
